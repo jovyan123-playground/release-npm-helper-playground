@@ -2,5 +2,8 @@
   "name": "release-npm-helper",
   "version": "1.0.0",
   "main": "index.js",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "ps-list": "^7.2.0"
+  }
 }
