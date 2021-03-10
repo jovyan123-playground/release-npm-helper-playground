@@ -16,9 +16,29 @@ async function startLocalRegistry() {
 
     // make a known dir in /tmp to run verdaccio
     const out_dir = path.join(os.tmpdir(), 'verdaccio');
+    if (!fs.existsSync(out_dir)) {
+        fs.mkdirSync(out_dir);
+    }
+
+    // Get current registry values
+    const prev_npm = utils.run('npm config get registry');
+    let prev_yarn = ''
+    try {
+        const prev_yarn = utislrun('yarn config get registry');
+    } catch {
+    }
 
     // copy the config file there
-    fs.copyFileSync('verdaccio.yml', path.join(out_dir, 'verdaccio.yml'))
+    const config = path.join(out_dir, 'verdaccio.yml');
+    fs.copyFileSync('verdaccio.yml', config);
+
+    // Use existing registry if set
+    if (prev_npm) {
+        const text = fs.readFileSync(config, {encoding: 'utf-8'});
+        text = text.replace("https://registry.npmjs.org/", prev_npm);
+        fs.writeFileSync(config, text, { encoding: 'utf-8' })
+    }
+
     const log_file = path.join(out_dir, 'verdaccio.log');
     const pkg_name = default_verdaccio_package;
 
@@ -28,7 +48,7 @@ async function startLocalRegistry() {
     child_process.execSync(`npm install -g ${pkg_name}`)
 
     const args = `-c verdaccio.yml -l localhost:${port}`;
-    console.log('Running in', out_dir);
+    console.log('Starting in', out_dir);
     console.log('>', 'verdaccio', args);
 
     const out = fs.openSync(log_file, 'a');
@@ -56,13 +76,6 @@ async function startLocalRegistry() {
     }
     console.log('\nverdaccio started');
 
-    // Get current registry values
-    const prev_npm = utils.run('npm config get registry');
-    try {
-        const prev_yarn = utislrun('yarn config get registry');
-    } catch {
-        const prev_yarn = '';
-    }
     // Store registry values and pid in files
     const info_file = path.join(out_dir, 'info.json');
     const data = {
@@ -80,6 +93,8 @@ async function startLocalRegistry() {
     } catch (e) {
         // yarn not available
     }
+
+    console.log('\nRunning in', out_dir);
     process.exit(0);
 }
 
@@ -93,15 +108,29 @@ async function stopLocalRegistry() {
         return
     }
     const info_file = path.join(out_dir, 'info.json');
+    if (!fs.existsSync(info_file)) {
+        return;
+    }
     const data = utils.readJSONFile(info_file);
 
     // Kill the pid
+    console.log(`Killing process ${data.pid}`)
     process.kill(data.pid);
 
     // Restore the previous registry entries
-    child_process.execSync(`npm set registry ${data.prev_npm}`);
+    if (data.prev_npm) {
+        child_process.execSync(`npm set registry ${data.prev_npm}`);
+    } else {
+        child_process.execSync(`npm config rm registry`);
+    }
     if (data.prev_yarn) {
         child_process.execSync(`yarn config set registry ${data.prev_yarn}`);
+    } else {
+        try {
+            child_process.execSync(`yarn config delete registry`)
+        } catch (e) {
+            // yarn not available
+        }
     }
 }
 
